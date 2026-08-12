@@ -1,0 +1,1036 @@
+{
+    "definition": {
+        "metadata": {
+            "notes": {}
+        },
+        "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+        "contentVersion": "1.0.0.0",
+        "triggers": {
+            "When_a_blob_is_added_or_modified_(properties_only)_(V2)": {
+                "recurrence": {
+                    "interval": 1,
+                    "frequency": "Minute",
+                    "timeZone": "AUS Eastern Standard Time"
+                },
+                "evaluatedRecurrence": {
+                    "interval": 1,
+                    "frequency": "Minute",
+                    "timeZone": "AUS Eastern Standard Time"
+                },
+                "splitOn": "@triggerBody()",
+                "metadata": {
+                    "JTJmcmF3LWRhdGE=": "/raw-data"
+                },
+                "type": "ApiConnection",
+                "inputs": {
+                    "host": {
+                        "connection": {
+                            "name": "@parameters('$connections')['azureblob']['connectionId']"
+                        }
+                    },
+                    "method": "get",
+                    "path": "/v2/datasets/@{encodeURIComponent(encodeURIComponent('AccountNameFromSettings'))}/triggers/batch/onupdatedfile",
+                    "queries": {
+                        "folderId": "JTJmcmF3LWRhdGE=",
+                        "maxFileCount": 10,
+                        "checkBothCreatedAndModifiedDateTime": false
+                    }
+                },
+                "conditions": [
+                    {
+                        "expression": "@endsWith(triggerBody()?['Name'], '.csv')"
+                    }
+                ],
+                "runtimeConfiguration": {
+                    "concurrency": {
+                        "runs": 1
+                    }
+                }
+            }
+        },
+        "actions": {
+            "Initialize_variables": {
+                "runAfter": {},
+                "type": "InitializeVariable",
+                "inputs": {
+                    "variables": [
+                        {
+                            "name": "fileName",
+                            "type": "string",
+                            "value": "@{triggerBody()?['Name']}"
+                        },
+                        {
+                            "name": "totalRecords",
+                            "type": "integer",
+                            "value": 0
+                        },
+                        {
+                            "name": "validRecordsCount",
+                            "type": "integer",
+                            "value": 0
+                        },
+                        {
+                            "name": "invalidRecordsCount",
+                            "type": "integer",
+                            "value": 0
+                        },
+                        {
+                            "name": "validSimplified",
+                            "type": "array"
+                        },
+                        {
+                            "name": "rejectedRecords",
+                            "type": "array"
+                        },
+                        {
+                            "name": "countOpen",
+                            "type": "integer",
+                            "value": 0
+                        },
+                        {
+                            "name": "countResolved",
+                            "type": "integer",
+                            "value": 0
+                        },
+                        {
+                            "name": "countInProgress",
+                            "type": "integer",
+                            "value": 0
+                        },
+                        {
+                            "name": "countHigh",
+                            "type": "integer",
+                            "value": 0
+                        },
+                        {
+                            "name": "countMedium",
+                            "type": "integer",
+                            "value": 0
+                        },
+                        {
+                            "name": "countLow",
+                            "type": "integer",
+                            "value": 0
+                        },
+                        {
+                            "name": "countGraffiti",
+                            "type": "integer",
+                            "value": 0
+                        },
+                        {
+                            "name": "countPothole",
+                            "type": "integer",
+                            "value": 0
+                        },
+                        {
+                            "name": "countDumpedRubbish",
+                            "type": "integer",
+                            "value": 0
+                        },
+                        {
+                            "name": "countStreetlightFault",
+                            "type": "integer",
+                            "value": 0
+                        },
+                        {
+                            "name": "countTreeDown",
+                            "type": "integer",
+                            "value": 0
+                        },
+                        {
+                            "name": "countNoiseComplaint",
+                            "type": "integer",
+                            "value": 0
+                        },
+                        {
+                            "name": "countWaterLeak",
+                            "type": "integer",
+                            "value": 0
+                        },
+                        {
+                            "name": "countOther",
+                            "type": "integer",
+                            "value": 0
+                        }
+                    ]
+                }
+            },
+            "ProcessFile": {
+                "actions": {
+                    "Get_blob_content_(V2)": {
+                        "type": "ApiConnection",
+                        "inputs": {
+                            "host": {
+                                "connection": {
+                                    "name": "@parameters('$connections')['azureblob-1']['connectionId']"
+                                }
+                            },
+                            "method": "get",
+                            "path": "/v2/datasets/@{encodeURIComponent(encodeURIComponent('AccountNameFromSettings'))}/files/@{encodeURIComponent(encodeURIComponent(triggerBody()?['Path']))}/content",
+                            "queries": {
+                                "inferContentType": true
+                            }
+                        }
+                    },
+                    "newLine": {
+                        "runAfter": {
+                            "Get_blob_content_(V2)": [
+                                "Succeeded"
+                            ]
+                        },
+                        "type": "Compose",
+                        "inputs": "\n"
+                    },
+                    "splitByLines": {
+                        "runAfter": {
+                            "newLine": [
+                                "Succeeded"
+                            ]
+                        },
+                        "type": "Compose",
+                        "inputs": "@split(body('Get_blob_content_(V2)'), outputs('newLine'))"
+                    },
+                    "fieldNames": {
+                        "runAfter": {
+                            "splitByLines": [
+                                "Succeeded"
+                            ]
+                        },
+                        "type": "Compose",
+                        "inputs": "@split(first(outputs('splitByLines')), ',')"
+                    },
+                    "Select": {
+                        "runAfter": {
+                            "fieldNames": [
+                                "Succeeded"
+                            ]
+                        },
+                        "type": "Select",
+                        "inputs": {
+                            "from": "@skip(outputs('splitByLines'), 1)",
+                            "select": {
+                                "incident_id": "@split(item(), ',')?[0]",
+                                "reported_date": "@split(item(), ',')?[1]",
+                                "suburb": "@split(item(), ',')?[2]",
+                                "category": "@split(item(), ',')?[3]",
+                                "status": "@split(item(), ',')?[4]",
+                                "priority": "@split(item(), ',')?[5]",
+                                "description": "@split(item(), ',')?[6]",
+                                "lat": "@split(item(), ',')?[7]",
+                                "lon": "@trim(string(split(item(), ',')?[8]))"
+                            }
+                        }
+                    },
+                    "blankRow": {
+                        "runAfter": {
+                            "Select": [
+                                "Succeeded"
+                            ]
+                        },
+                        "type": "Compose",
+                        "inputs": "@take(body('Select'), sub(length(body('Select')), 1))\n"
+                    },
+                    "Parse_JSON": {
+                        "runAfter": {
+                            "blankRow": [
+                                "Succeeded"
+                            ]
+                        },
+                        "type": "ParseJson",
+                        "inputs": {
+                            "content": "@outputs('blankRow')",
+                            "schema": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "incident_id": {
+                                            "type": "string"
+                                        },
+                                        "reported_date": {
+                                            "type": "string"
+                                        },
+                                        "suburb": {
+                                            "type": "string"
+                                        },
+                                        "category": {
+                                            "type": "string"
+                                        },
+                                        "status": {
+                                            "type": "string"
+                                        },
+                                        "priority": {
+                                            "type": "string"
+                                        },
+                                        "description": {
+                                            "type": "string"
+                                        },
+                                        "lat": {
+                                            "type": "string"
+                                        },
+                                        "lon": {
+                                            "type": "string"
+                                        }
+                                    },
+                                    "required": [
+                                        "incident_id",
+                                        "reported_date",
+                                        "suburb",
+                                        "category",
+                                        "status",
+                                        "priority"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "Set_variable_(totalRecords)": {
+                        "runAfter": {
+                            "Parse_JSON": [
+                                "Succeeded"
+                            ]
+                        },
+                        "type": "SetVariable",
+                        "inputs": {
+                            "name": "totalRecords",
+                            "value": "@length(body('Parse_JSON'))"
+                        }
+                    },
+                    "For_each_record": {
+                        "foreach": "@body('Parse_JSON')",
+                        "actions": {
+                            "ValidateRecord": {
+                                "actions": {
+                                    "Increment_variable_(valid)": {
+                                        "type": "IncrementVariable",
+                                        "inputs": {
+                                            "name": "validRecordsCount",
+                                            "value": 1
+                                        }
+                                    },
+                                    "Append_to_array_variable_(valid)": {
+                                        "runAfter": {
+                                            "Increment_variable_(valid)": [
+                                                "Succeeded"
+                                            ]
+                                        },
+                                        "type": "AppendToArrayVariable",
+                                        "inputs": {
+                                            "name": "validSimplified",
+                                            "value": "@outputs('simplifiedRecord')"
+                                        }
+                                    },
+                                    "Switch_(status)": {
+                                        "runAfter": {
+                                            "Append_to_array_variable_(validFull)": [
+                                                "Succeeded"
+                                            ]
+                                        },
+                                        "cases": {
+                                            "Case_1_(Open)": {
+                                                "case": "Open",
+                                                "actions": {
+                                                    "Increment_variable_(open)": {
+                                                        "type": "IncrementVariable",
+                                                        "inputs": {
+                                                            "name": "countOpen",
+                                                            "value": 1
+                                                        }
+                                                    }
+                                                }
+                                            },
+                                            "Case_2_(Resolved)": {
+                                                "case": "Resolved",
+                                                "actions": {
+                                                    "Increment_variable_(resolved)": {
+                                                        "type": "IncrementVariable",
+                                                        "inputs": {
+                                                            "name": "countResolved",
+                                                            "value": 1
+                                                        }
+                                                    }
+                                                }
+                                            },
+                                            "Case_3_(In_Progress)": {
+                                                "case": "In Progress",
+                                                "actions": {
+                                                    "Increment_variable_(progress)": {
+                                                        "type": "IncrementVariable",
+                                                        "inputs": {
+                                                            "name": "countInProgress",
+                                                            "value": 1
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        "default": {
+                                            "actions": {}
+                                        },
+                                        "expression": "@item()['status']",
+                                        "type": "Switch"
+                                    },
+                                    "Switch_(priority)": {
+                                        "runAfter": {
+                                            "Switch_(status)": [
+                                                "Succeeded"
+                                            ]
+                                        },
+                                        "cases": {
+                                            "Case_1_(High)": {
+                                                "case": "High",
+                                                "actions": {
+                                                    "Increment_variable_(high)": {
+                                                        "type": "IncrementVariable",
+                                                        "inputs": {
+                                                            "name": "countHigh",
+                                                            "value": 1
+                                                        }
+                                                    }
+                                                }
+                                            },
+                                            "Case_2_(Medium)": {
+                                                "case": "Medium",
+                                                "actions": {
+                                                    "Increment_variable_(medium)": {
+                                                        "type": "IncrementVariable",
+                                                        "inputs": {
+                                                            "name": "countMedium",
+                                                            "value": 1
+                                                        }
+                                                    }
+                                                }
+                                            },
+                                            "Case_3_(Low)": {
+                                                "case": "Low",
+                                                "actions": {
+                                                    "Increment_variable_(low)": {
+                                                        "type": "IncrementVariable",
+                                                        "inputs": {
+                                                            "name": "countLow",
+                                                            "value": 1
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        "default": {
+                                            "actions": {}
+                                        },
+                                        "expression": "@item()['priority']",
+                                        "type": "Switch"
+                                    },
+                                    "Switch_(category)": {
+                                        "runAfter": {
+                                            "Switch_(priority)": [
+                                                "Succeeded"
+                                            ]
+                                        },
+                                        "cases": {
+                                            "Case_1_(Graffiti)": {
+                                                "case": "Graffiti",
+                                                "actions": {
+                                                    "Increment_variable_(graffiti)": {
+                                                        "type": "IncrementVariable",
+                                                        "inputs": {
+                                                            "name": "countGraffiti",
+                                                            "value": 1
+                                                        }
+                                                    }
+                                                }
+                                            },
+                                            "Case_2_(Pothole)": {
+                                                "case": "Pothole",
+                                                "actions": {
+                                                    "Increment_variable_(pothole)": {
+                                                        "type": "IncrementVariable",
+                                                        "inputs": {
+                                                            "name": "countPothole",
+                                                            "value": 1
+                                                        }
+                                                    }
+                                                }
+                                            },
+                                            "Case_3_(Rubbish)": {
+                                                "case": "Dumped Rubbish",
+                                                "actions": {
+                                                    "Increment_variable_(rubbish)": {
+                                                        "type": "IncrementVariable",
+                                                        "inputs": {
+                                                            "name": "countDumpedRubbish",
+                                                            "value": 1
+                                                        }
+                                                    }
+                                                }
+                                            },
+                                            "Case_4_(Noise)": {
+                                                "case": "Noise Complaint",
+                                                "actions": {
+                                                    "Increment_variable_(noise)": {
+                                                        "type": "IncrementVariable",
+                                                        "inputs": {
+                                                            "name": "countNoiseComplaint",
+                                                            "value": 1
+                                                        }
+                                                    }
+                                                }
+                                            },
+                                            "Case_5_(Streetlight)": {
+                                                "case": "Streetlight Fault",
+                                                "actions": {
+                                                    "Increment_variable_(streetlight)": {
+                                                        "type": "IncrementVariable",
+                                                        "inputs": {
+                                                            "name": "countStreetlightFault",
+                                                            "value": 1
+                                                        }
+                                                    }
+                                                }
+                                            },
+                                            "Case_6_(Tree)": {
+                                                "case": "Tree Down",
+                                                "actions": {
+                                                    "Increment_variable_(tree)": {
+                                                        "type": "IncrementVariable",
+                                                        "inputs": {
+                                                            "name": "countTreeDown",
+                                                            "value": 1
+                                                        }
+                                                    }
+                                                }
+                                            },
+                                            "Case_7_(Water)": {
+                                                "case": "Water Leak",
+                                                "actions": {
+                                                    "Increment_variable_(water)": {
+                                                        "type": "IncrementVariable",
+                                                        "inputs": {
+                                                            "name": "countWaterLeak",
+                                                            "value": 1
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        "default": {
+                                            "actions": {
+                                                "Increment_variable_(other)": {
+                                                    "type": "IncrementVariable",
+                                                    "inputs": {
+                                                        "name": "countOther",
+                                                        "value": 1
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        "expression": "@trim(item()?['category'])",
+                                        "type": "Switch"
+                                    },
+                                    "Append_to_array_variable_(validFull)": {
+                                        "runAfter": {
+                                            "Append_to_array_variable_(valid)": [
+                                                "Succeeded"
+                                            ]
+                                        },
+                                        "type": "AppendToArrayVariable",
+                                        "inputs": {
+                                            "name": "validFull",
+                                            "value": "@item()"
+                                        }
+                                    }
+                                },
+                                "runAfter": {
+                                    "simplifiedRecord": [
+                                        "Succeeded"
+                                    ]
+                                },
+                                "else": {
+                                    "actions": {
+                                        "Increment_variable_(invalid)": {
+                                            "type": "IncrementVariable",
+                                            "inputs": {
+                                                "name": "invalidRecordsCount",
+                                                "value": 1
+                                            }
+                                        },
+                                        "Append_to_array_variable_(rejected)": {
+                                            "runAfter": {
+                                                "Increment_variable_(invalid)": [
+                                                    "Succeeded"
+                                                ]
+                                            },
+                                            "type": "AppendToArrayVariable",
+                                            "inputs": {
+                                                "name": "rejectedRecords",
+                                                "value": "@addProperty(item(), 'rejectReason', 'Missing required field or invalid status/priority/date format')"
+                                            }
+                                        }
+                                    }
+                                },
+                                "expression": {
+                                    "and": [
+                                        {
+                                            "equals": [
+                                                "@empty(item()?['incident_id'])",
+                                                "@false"
+                                            ]
+                                        },
+                                        {
+                                            "equals": [
+                                                "@empty(item()?['reported_date'])",
+                                                "@false"
+                                            ]
+                                        },
+                                        {
+                                            "equals": [
+                                                "@empty(item()?['suburb'])",
+                                                "@false"
+                                            ]
+                                        },
+                                        {
+                                            "equals": [
+                                                "@empty(item()?['category'])",
+                                                "@false"
+                                            ]
+                                        },
+                                        {
+                                            "equals": [
+                                                "@empty(item()?['status'])",
+                                                "@false"
+                                            ]
+                                        },
+                                        {
+                                            "equals": [
+                                                "@empty(item()?['priority'])",
+                                                "@false"
+                                            ]
+                                        },
+                                        {
+                                            "or": [
+                                                {
+                                                    "equals": [
+                                                        "@item()['status']",
+                                                        "Open"
+                                                    ]
+                                                },
+                                                {
+                                                    "equals": [
+                                                        "@item()['status']",
+                                                        "Resolved"
+                                                    ]
+                                                },
+                                                {
+                                                    "equals": [
+                                                        "@item()['status']",
+                                                        "In Progress"
+                                                    ]
+                                                }
+                                            ]
+                                        },
+                                        {
+                                            "or": [
+                                                {
+                                                    "equals": [
+                                                        "@item()['priority']",
+                                                        "High"
+                                                    ]
+                                                },
+                                                {
+                                                    "equals": [
+                                                        "@item()['priority']",
+                                                        "Medium"
+                                                    ]
+                                                },
+                                                {
+                                                    "equals": [
+                                                        "@item()['priority']",
+                                                        "Low"
+                                                    ]
+                                                }
+                                            ]
+                                        },
+                                        {
+                                            "equals": [
+                                                "@length(trim(item()?['reported_date']))",
+                                                10
+                                            ]
+                                        },
+                                        {
+                                            "equals": [
+                                                "@substring(trim(item()?['reported_date']), 4, 1)",
+                                                "-"
+                                            ]
+                                        },
+                                        {
+                                            "equals": [
+                                                "@substring(trim(item()?['reported_date']), 7, 1)",
+                                                "-"
+                                            ]
+                                        }
+                                    ]
+                                },
+                                "type": "If"
+                            },
+                            "simplifiedRecord": {
+                                "type": "Compose",
+                                "inputs": {
+                                    "incident_id": "@{item()?['incident_id']}",
+                                    "reported_date": "@{item()?['reported_date']}",
+                                    "suburb": "@{item()?['suburb']}",
+                                    "category": "@{item()?['category']}",
+                                    "status": "@{item()?['status']}",
+                                    "priority": "@{item()?['priority']}"
+                                }
+                            }
+                        },
+                        "runAfter": {
+                            "Set_variable_(totalRecords)": [
+                                "Succeeded"
+                            ]
+                        },
+                        "type": "Foreach"
+                    },
+                    "byCategoryArray": {
+                        "runAfter": {
+                            "CheckRejectedRecords": [
+                                "Succeeded"
+                            ]
+                        },
+                        "type": "Compose",
+                        "inputs": "@createArray(json(concat('{\"category\":\"Graffiti\",\"count\":', string(variables('countGraffiti')), '}')), json(concat('{\"category\":\"Pothole\",\"count\":', string(variables('countPothole')), '}')), json(concat('{\"category\":\"Dumped Rubbish\",\"count\":', string(variables('countDumpedRubbish')), '}')), json(concat('{\"category\":\"Streetlight Fault\",\"count\":', string(variables('countStreetlightFault')), '}')), json(concat('{\"category\":\"Tree Down\",\"count\":', string(variables('countTreeDown')), '}')), json(concat('{\"category\":\"Noise Complaint\",\"count\":', string(variables('countNoiseComplaint')), '}')), json(concat('{\"category\":\"Water Leak\",\"count\":', string(variables('countWaterLeak')), '}')), json(concat('{\"category\":\"Other\",\"count\":', string(variables('countOther')), '}')))"
+                    },
+                    "byPriorityArray": {
+                        "runAfter": {
+                            "byCategoryArray": [
+                                "Succeeded"
+                            ]
+                        },
+                        "type": "Compose",
+                        "inputs": "@createArray(json(concat('{\"priority\":\"High\",\"count\":', string(variables('countHigh')), '}')), json(concat('{\"priority\":\"Medium\",\"count\":', string(variables('countMedium')), '}')), json(concat('{\"priority\":\"Low\",\"count\":', string(variables('countLow')), '}')))"
+                    },
+                    "sortedByDate": {
+                        "runAfter": {
+                            "byPriorityArray": [
+                                "Succeeded"
+                            ]
+                        },
+                        "type": "Compose",
+                        "inputs": "@reverse(sort(variables('validSimplified'), 'reported_date'))"
+                    },
+                    "recentRecords": {
+                        "runAfter": {
+                            "sortedByDate": [
+                                "Succeeded"
+                            ]
+                        },
+                        "type": "Compose",
+                        "inputs": "@take(outputs('sortedByDate'), 10)"
+                    },
+                    "dashboardJson": {
+                        "runAfter": {
+                            "recentRecords": [
+                                "Succeeded"
+                            ]
+                        },
+                        "type": "Compose",
+                        "inputs": {
+                            "lastUpdated": "@{utcNow()}",
+                            "metrics": {
+                                "totalIncidents": "@variables('validRecordsCount')",
+                                "openIncidents": "@variables('countOpen')",
+                                "resolvedIncidents": "@variables('countResolved')",
+                                "inProgressIncidents": "@variables('countInProgress')"
+                            },
+                            "byCategory": "@outputs('byCategoryArray')",
+                            "byPriority": "@outputs('byPriorityArray')",
+                            "recentRecords": "@outputs('recentRecords')"
+                        }
+                    },
+                    "CreateDashboardJson": {
+                        "runAfter": {
+                            "dashboardJson": [
+                                "Succeeded"
+                            ]
+                        },
+                        "type": "ApiConnection",
+                        "inputs": {
+                            "host": {
+                                "connection": {
+                                    "name": "@parameters('$connections')['azureblob-2']['connectionId']"
+                                }
+                            },
+                            "method": "post",
+                            "body": "@string(outputs('dashboardJson'))",
+                            "headers": {
+                                "ReadFileMetadataFromServer": true
+                            },
+                            "path": "/v2/datasets/@{encodeURIComponent(encodeURIComponent('AccountNameFromSettings'))}/files",
+                            "queries": {
+                                "folderPath": "/$web/data",
+                                "name": "dashboard-data.json",
+                                "queryParametersSingleEncoded": true
+                            }
+                        },
+                        "runtimeConfiguration": {
+                            "contentTransfer": {
+                                "transferMode": "Chunked"
+                            }
+                        }
+                    },
+                    "SaveCuratedData": {
+                        "runAfter": {
+                            "CreateDashboardJson": [
+                                "Succeeded"
+                            ]
+                        },
+                        "type": "ApiConnection",
+                        "inputs": {
+                            "host": {
+                                "connection": {
+                                    "name": "@parameters('$connections')['azureblob-2']['connectionId']"
+                                }
+                            },
+                            "method": "post",
+                            "body": "@string(variables('validFull'))",
+                            "headers": {
+                                "ReadFileMetadataFromServer": true
+                            },
+                            "path": "/v2/datasets/@{encodeURIComponent(encodeURIComponent('AccountNameFromSettings'))}/files",
+                            "queries": {
+                                "folderPath": "/curated-data",
+                                "name": "@concat('curated_', formatDateTime(utcNow(), 'yyyyMMddHHmmss'), '.json')",
+                                "queryParametersSingleEncoded": true
+                            }
+                        },
+                        "runtimeConfiguration": {
+                            "contentTransfer": {
+                                "transferMode": "Chunked"
+                            }
+                        }
+                    },
+                    "SaveProcessingLog": {
+                        "runAfter": {
+                            "SaveCuratedData": [
+                                "Succeeded"
+                            ]
+                        },
+                        "type": "ApiConnection",
+                        "inputs": {
+                            "host": {
+                                "connection": {
+                                    "name": "@parameters('$connections')['azureblob-2']['connectionId']"
+                                }
+                            },
+                            "method": "post",
+                            "body": "@concat('{\"fileName\":\"', variables('fileName'), '\",\"processedAt\":\"', utcNow(), '\",\"totalRecords\":', string(variables('totalRecords')), ',\"validRecords\":', string(variables('validRecordsCount')), ',\"invalidRecords\":', string(variables('invalidRecordsCount')), ',\"outcome\":\"Success\"}')",
+                            "headers": {
+                                "ReadFileMetadataFromServer": true
+                            },
+                            "path": "/v2/datasets/@{encodeURIComponent(encodeURIComponent('AccountNameFromSettings'))}/files",
+                            "queries": {
+                                "folderPath": "/processing-logs",
+                                "name": "@concat('log_', formatDateTime(utcNow(), 'yyyyMMddHHmmss'), '.json')",
+                                "queryParametersSingleEncoded": true
+                            }
+                        },
+                        "runtimeConfiguration": {
+                            "contentTransfer": {
+                                "transferMode": "Chunked"
+                            }
+                        }
+                    },
+                    "SaveArchiveData": {
+                        "runAfter": {
+                            "SaveProcessingLog": [
+                                "Succeeded"
+                            ]
+                        },
+                        "type": "ApiConnection",
+                        "inputs": {
+                            "host": {
+                                "connection": {
+                                    "name": "@parameters('$connections')['azureblob-2']['connectionId']"
+                                }
+                            },
+                            "method": "post",
+                            "body": "@body('Get_blob_content_(V2)')",
+                            "headers": {
+                                "ReadFileMetadataFromServer": true
+                            },
+                            "path": "/v2/datasets/@{encodeURIComponent(encodeURIComponent('AccountNameFromSettings'))}/files",
+                            "queries": {
+                                "folderPath": "/archive",
+                                "name": "@concat('archive_', formatDateTime(utcNow(), 'yyyyMMddHHmmss'), '_', triggerBody()?['Name'])",
+                                "queryParametersSingleEncoded": true
+                            }
+                        },
+                        "runtimeConfiguration": {
+                            "contentTransfer": {
+                                "transferMode": "Chunked"
+                            }
+                        }
+                    },
+                    "Delete_blob_(V2)": {
+                        "runAfter": {
+                            "SaveArchiveData": [
+                                "Succeeded"
+                            ]
+                        },
+                        "type": "ApiConnection",
+                        "inputs": {
+                            "host": {
+                                "connection": {
+                                    "name": "@parameters('$connections')['azureblob-2']['connectionId']"
+                                }
+                            },
+                            "method": "delete",
+                            "headers": {
+                                "SkipDeleteIfFileNotFoundOnServer": false
+                            },
+                            "path": "/v2/datasets/@{encodeURIComponent(encodeURIComponent('AccountNameFromSettings'))}/files/@{encodeURIComponent(encodeURIComponent(triggerBody()?['Path']))}"
+                        }
+                    },
+                    "CheckRejectedRecords": {
+                        "actions": {
+                            "SaveRejectedData": {
+                                "type": "ApiConnection",
+                                "inputs": {
+                                    "host": {
+                                        "connection": {
+                                            "name": "@parameters('$connections')['azureblob-2']['connectionId']"
+                                        }
+                                    },
+                                    "method": "post",
+                                    "body": "@string(variables('rejectedRecords'))",
+                                    "headers": {
+                                        "ReadFileMetadataFromServer": true
+                                    },
+                                    "path": "/v2/datasets/@{encodeURIComponent(encodeURIComponent('AccountNameFromSettings'))}/files",
+                                    "queries": {
+                                        "folderPath": "/rejected-data",
+                                        "name": "@concat('rejected_', formatDateTime(utcNow(), 'yyyyMMddHHmmss'), '.json')",
+                                        "queryParametersSingleEncoded": true
+                                    }
+                                },
+                                "runtimeConfiguration": {
+                                    "contentTransfer": {
+                                        "transferMode": "Chunked"
+                                    }
+                                }
+                            }
+                        },
+                        "runAfter": {
+                            "For_each_record": [
+                                "Succeeded"
+                            ]
+                        },
+                        "else": {
+                            "actions": {}
+                        },
+                        "expression": {
+                            "and": [
+                                {
+                                    "greater": [
+                                        "@variables('invalidRecordsCount')",
+                                        0
+                                    ]
+                                }
+                            ]
+                        },
+                        "type": "If"
+                    }
+                },
+                "runAfter": {
+                    "Initialize_variables_(validFull)": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "Scope"
+            },
+            "HandleFailure": {
+                "actions": {
+                    "Create_blob_(V2)_4": {
+                        "type": "ApiConnection",
+                        "inputs": {
+                            "host": {
+                                "connection": {
+                                    "name": "@parameters('$connections')['azureblob-2']['connectionId']"
+                                }
+                            },
+                            "method": "post",
+                            "body": "@concat('{\"fileName\":\"', variables('fileName'), '\",\"processedAt\":\"', utcNow(), '\",\"outcome\":\"Failed\",\"details\":', string(result('ProcessFile')), '}')",
+                            "headers": {
+                                "ReadFileMetadataFromServer": true
+                            },
+                            "path": "/v2/datasets/@{encodeURIComponent(encodeURIComponent('AccountNameFromSettings'))}/files",
+                            "queries": {
+                                "folderPath": "/processing-logs",
+                                "name": "@concat('log_', formatDateTime(utcNow(), 'yyyyMMddHHmmss'), '_FAILED.json')",
+                                "queryParametersSingleEncoded": true
+                            }
+                        },
+                        "runtimeConfiguration": {
+                            "contentTransfer": {
+                                "transferMode": "Chunked"
+                            }
+                        }
+                    }
+                },
+                "runAfter": {
+                    "ProcessFile": [
+                        "Failed"
+                    ]
+                },
+                "type": "Scope"
+            },
+            "Initialize_variables_(validFull)": {
+                "runAfter": {
+                    "Initialize_variables": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "InitializeVariable",
+                "inputs": {
+                    "variables": [
+                        {
+                            "name": "validFull",
+                            "type": "array"
+                        }
+                    ]
+                }
+            }
+        },
+        "outputs": {},
+        "parameters": {
+            "$connections": {
+                "type": "Object",
+                "defaultValue": {}
+            }
+        }
+    },
+    "parameters": {
+        "$connections": {
+            "type": "Object",
+            "value": {
+                "azureblob": {
+                    "id": "/subscriptions/832ec99d-3f60-43df-8fda-a81bca919e12/providers/Microsoft.Web/locations/australiaeast/managedApis/azureblob",
+                    "connectionId": "/subscriptions/832ec99d-3f60-43df-8fda-a81bca919e12/resourceGroups/rg-council-incident-prod/providers/Microsoft.Web/connections/azureblob",
+                    "connectionName": "azureblob",
+                    "connectionProperties": {}
+                },
+                "azureblob-1": {
+                    "id": "/subscriptions/832ec99d-3f60-43df-8fda-a81bca919e12/providers/Microsoft.Web/locations/australiaeast/managedApis/azureblob",
+                    "connectionId": "/subscriptions/832ec99d-3f60-43df-8fda-a81bca919e12/resourceGroups/rg-council-incident-prod/providers/Microsoft.Web/connections/azureblob",
+                    "connectionName": "azureblob",
+                    "connectionProperties": {}
+                },
+                "azureblob-2": {
+                    "id": "/subscriptions/832ec99d-3f60-43df-8fda-a81bca919e12/providers/Microsoft.Web/locations/australiaeast/managedApis/azureblob",
+                    "connectionId": "/subscriptions/832ec99d-3f60-43df-8fda-a81bca919e12/resourceGroups/rg-council-incident-prod/providers/Microsoft.Web/connections/azureblob",
+                    "connectionName": "azureblob",
+                    "connectionProperties": {}
+                }
+            }
+        }
+    }
+}
